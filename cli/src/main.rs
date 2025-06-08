@@ -1,7 +1,6 @@
 use std::path::PathBuf;
-
 use clap::{Arg, ArgAction, Command};
-use rve::venv::create_venv;
+use venv::venv::create_venv;
 
 pub fn main() -> Result<(), String> {
     let args = Command::new("rve")
