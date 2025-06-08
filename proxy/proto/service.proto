@@ -1,0 +1,21 @@
+syntax = "proto3";
+package proxy;
+
+// The RPC service
+service ProxyService {
+  // maps to /ping HTTP endpoint
+  rpc Predict (PredictRequest) returns (PredictResponse);
+}
+
+// request message
+message PredictRequest {
+  string user_id = 1;
+  string action  = 2;
+}
+
+// response message
+message PredictResponse {
+  string status  = 1;
+  string message = 2;
+}
+
