@@ -1,51 +1,62 @@
-use actix_web::{App, HttpResponse, HttpServer, web};
-use serde::{Deserialize, Serialize};
+use std::sync::Mutex;
+
+use actix_web::{error::ErrorBadRequest, web, App, HttpResponse, HttpServer};
 pub mod service {
     tonic::include_proto!("proxy");
 }
+use serde_json::Value;
 use service::{PredictRequest, proxy_service_client::ProxyServiceClient};
-use tonic::Request;
+use tonic::{Request, transport::Channel};
 
-#[derive(Deserialize)]
-struct HttpPredictRequest {
-    user_id: String,
-    action: String,
-}
-
-#[derive(Serialize)]
-struct HttpPredictResponse {
-    status: String,
-    message: String,
+struct AppState {
+    client: Mutex<ProxyServiceClient<Channel>>,
 }
 
 async fn predict_handler(
-    json: web::Json<HttpPredictRequest>,
+    data: web::Data<AppState>,
+    json: web::Json<Value>,
 ) -> Result<HttpResponse, actix_web::Error> {
-    let mut client = ProxyServiceClient::connect("http://[::1]:50051")
-        .await
-        .map_err(actix_web::error::ErrorInternalServerError)?;
 
-    let request = Request::new(PredictRequest {
-        user_id: json.user_id.clone(),
-        action: json.action.clone(),
-    });
-
-    let response = client
-        .predict(request)
+    let payload = serde_json::to_string(&json.into_inner()).map_err(ErrorBadRequest)?;
+    
+    let mut client = data.client.lock().unwrap();
+  // gRPC request
+    let grpc_response = client
+        .predict(Request::new(PredictRequest {
+            json_request: payload,
+        }))
         .await
         .map_err(actix_web::error::ErrorInternalServerError)?
         .into_inner();
 
-    Ok(HttpResponse::Ok().json(HttpPredictResponse {
-        status: response.status,
-        message: response.message,
-    }))
+    drop(client);
+
+    // Deserialize arbitrary response JSON
+    let response_value: Value = serde_json::from_str(&grpc_response.json_response)
+        .map_err(actix_web::error::ErrorInternalServerError)?;
+
+    // Construct response with additional metadata if needed
+    let response = serde_json::json!({
+        "response": response_value,
+    });
+
+    Ok(HttpResponse::Ok().json(response))
 }
 
-#[actix_web::main]
+#[tokio::main]
 async fn main() -> std::io::Result<()> {
-    HttpServer::new(|| App::new().route("/predict", web::get().to(predict_handler)))
-        .bind("0.0.0.0:8000")?
-        .run()
+    let client = ProxyServiceClient::connect("http://[::1]:50051")
         .await
+        .expect("Could not connect to gRPC service");
+
+    HttpServer::new(move || {
+        App::new()
+            .app_data(AppState {
+                client: Mutex::new(client.clone()),
+            })
+            .route("/predict", web::get().to(predict_handler))
+    })
+    .bind("0.0.0.0:8000")?
+    .run()
+    .await
 }
