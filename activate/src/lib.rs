@@ -9,16 +9,16 @@ use serde::Deserialize;
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct ModelConfig {
-    name: String,
-    port: u16,
-    path: PathBuf,
+    pub name: String,
+    pub port: u16,
+    pub path: PathBuf,
+    pub sub_route: Option<String>,
 }
 
 #[derive(Debug)]
 pub struct ModelProcess {
     name: String,
     port: u16,
-    path: PathBuf,
     process: Child,
 }
 
@@ -54,7 +54,6 @@ pub fn start_model_process(model_config: &ModelConfig) -> Result<ModelProcess, B
     Ok(ModelProcess {
         name: model_config.name.clone(),
         port: model_config.port.clone(),
-        path: model_config.path.clone(),
         process,
     })
 }
