@@ -5,6 +5,7 @@ edition = "2024"
 
 [dependencies]
 venv = { path = "../venv" }
+activate = { path = "../activate" }
 
 actix-web = "4"
 serde = {version = "1", features = ["derive"]}
