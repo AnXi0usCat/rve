@@ -1,24 +1,30 @@
-use std::sync::Mutex;
+use std::{collections::HashMap, env, error::Error, path::PathBuf, sync::Mutex};
 
-use actix_web::{App, HttpResponse, HttpServer, error::ErrorBadRequest, web};
+use actix_web::{App, HttpRequest, HttpResponse, HttpServer, Route, error::ErrorBadRequest, web};
+use serde_json::Value;
+use tonic::{Request, transport::Channel};
 pub mod service {
     tonic::include_proto!("proxy");
 }
-use serde_json::Value;
+use activate::{ModelConfig, load_config};
 use service::{PredictRequest, proxy_service_client::ProxyServiceClient};
-use tonic::{Request, transport::Channel};
 
 struct AppState {
-    client: Mutex<ProxyServiceClient<Channel>>,
+    clients: HashMap<String, Mutex<ProxyServiceClient<Channel>>>,
 }
 
 async fn predict_handler(
+    req: HttpRequest,
     data: web::Data<AppState>,
     json: web::Json<Value>,
 ) -> Result<HttpResponse, actix_web::Error> {
-    let payload = serde_json::to_string(&json.into_inner()).map_err(ErrorBadRequest)?;
+    let resource_name = req
+        .match_name()
+        .ok_or_else(|| actix_web::error::ErrorInternalServerError("missing route name"))?;
 
-    let mut client = data.client.lock().unwrap();
+    let payload = serde_json::to_string(&json.into_inner()).map_err(ErrorBadRequest)?;
+    let mut client = data.clients.get(resource_name).unwrap().lock().unwrap();
+    
     // gRPC request
     let grpc_response = client
         .predict(Request::new(PredictRequest {
@@ -41,20 +47,57 @@ async fn predict_handler(
     Ok(HttpResponse::Ok().json(response))
 }
 
+async fn create_clients(
+    yamls: &Vec<ModelConfig>,
+) -> Result<HashMap<String, Mutex<ProxyServiceClient<Channel>>>, Box<dyn Error>> {
+    let mut clients: HashMap<String, Mutex<ProxyServiceClient<Channel>>> = HashMap::new();
+
+    for yaml in yamls.iter() {
+        let client = ProxyServiceClient::connect(format!("http://[::1]:{}", yaml.port))
+            .await
+            .expect("Could not connect to gRPC service");
+        if let Some(sub_route) = yaml.sub_route.clone() {
+            clients.insert(
+                format!("{}-{}", yaml.name.clone(), sub_route),
+                Mutex::new(client),
+            );
+        } else {
+            clients.insert(yaml.name.clone(), Mutex::new(client));
+        }
+    }
+    Ok(clients)
+}
+
 #[tokio::main]
-async fn main() -> std::io::Result<()> {
-    let client = ProxyServiceClient::connect("http://[::1]:50051")
-        .await
-        .expect("Could not connect to gRPC service");
+async fn main() -> Result<(), Box<dyn Error>> {
+    let config_path =
+        PathBuf::from(env::var("MODEL_YAML").expect("MODEL_YAML variable is not set."));
+
+    let yamls = load_config(config_path)?;
+    let clients = create_clients(&yamls).await?;
+    let state = web::Data::new(AppState { clients });
 
     HttpServer::new(move || {
-        App::new()
-            .app_data(AppState {
-                client: Mutex::new(client.clone()),
-            })
-            .route("/predict", web::get().to(predict_handler))
+        let mut app = App::new().app_data(state.clone());
+        for yaml in yamls.iter() {
+            let mut name = yaml.name.clone();
+            let mut route = format!("{}/predict", name);
+            if let Some(sub_route) = yaml.sub_route.clone() {
+                route = format!("{}-{}", route, sub_route);
+                name = format!("{}-{}", name, sub_route);
+            }
+            app = app.service(
+                web::resource(route)
+                    .name(&name)
+                    .route(web::get().to(predict_handler)),
+            );
+        }
+
+        app
     })
     .bind("0.0.0.0:8000")?
     .run()
-    .await
+    .await?;
+
+    Ok(())
 }
