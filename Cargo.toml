@@ -3,6 +3,7 @@ resolver = "3"
 members = [
     "venv",
     "cli",
-    "proxy"
+    "proxy", 
+    "activate"
 ]
 
