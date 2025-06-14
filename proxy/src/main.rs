@@ -24,7 +24,7 @@ async fn predict_handler(
 
     let payload = serde_json::to_string(&json.into_inner()).map_err(ErrorBadRequest)?;
     let mut client = data.clients.get(resource_name).unwrap().lock().unwrap();
-    
+
     // gRPC request
     let grpc_response = client
         .predict(Request::new(PredictRequest {
