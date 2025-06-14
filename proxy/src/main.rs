@@ -1,6 +1,6 @@
 use std::sync::Mutex;
 
-use actix_web::{error::ErrorBadRequest, web, App, HttpResponse, HttpServer};
+use actix_web::{App, HttpResponse, HttpServer, error::ErrorBadRequest, web};
 pub mod service {
     tonic::include_proto!("proxy");
 }
@@ -16,11 +16,10 @@ async fn predict_handler(
     data: web::Data<AppState>,
     json: web::Json<Value>,
 ) -> Result<HttpResponse, actix_web::Error> {
-
     let payload = serde_json::to_string(&json.into_inner()).map_err(ErrorBadRequest)?;
-    
+
     let mut client = data.client.lock().unwrap();
-  // gRPC request
+    // gRPC request
     let grpc_response = client
         .predict(Request::new(PredictRequest {
             json_request: payload,
@@ -35,7 +34,6 @@ async fn predict_handler(
     let response_value: Value = serde_json::from_str(&grpc_response.json_response)
         .map_err(actix_web::error::ErrorInternalServerError)?;
 
-    // Construct response with additional metadata if needed
     let response = serde_json::json!({
         "response": response_value,
     });
