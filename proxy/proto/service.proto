@@ -9,13 +9,11 @@ service ProxyService {
 
 // request message
 message PredictRequest {
-  string user_id = 1;
-  string action  = 2;
+  string json_request = 1;
 }
 
 // response message
 message PredictResponse {
-  string status  = 1;
-  string message = 2;
+  string json_response = 1;
 }
 
