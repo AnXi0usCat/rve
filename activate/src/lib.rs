@@ -22,8 +22,8 @@ pub struct ModelProcess {
     process: Child,
 }
 
-impl ModelProcess {
-    pub fn terminate(&mut self) {
+impl Drop for ModelProcess {
+    fn drop(&mut self) {
         let _ = self.process.kill();
     }
 }
