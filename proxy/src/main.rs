@@ -1,12 +1,12 @@
 use std::{collections::HashMap, env, error::Error, path::PathBuf, sync::Mutex};
 
-use actix_web::{App, HttpRequest, HttpResponse, HttpServer, Route, error::ErrorBadRequest, web};
+use actix_web::{App, HttpRequest, HttpResponse, HttpServer, error::ErrorBadRequest, web};
 use serde_json::Value;
 use tonic::{Request, transport::Channel};
 pub mod service {
     tonic::include_proto!("proxy");
 }
-use activate::{ModelConfig, load_config};
+use activate::{load_config, start_model_process, ModelConfig, ModelProcess};
 use service::{PredictRequest, proxy_service_client::ProxyServiceClient};
 
 struct AppState {
@@ -47,6 +47,15 @@ async fn predict_handler(
     Ok(HttpResponse::Ok().json(response))
 }
 
+fn start_servers(configs: &Vec<ModelConfig>) -> Result<Vec<ModelProcess>, Box<dyn Error>> {
+    let mut handles: Vec<ModelProcess> = Vec::new();
+
+    for config in configs.iter() {
+        handles.push(start_model_process(config)?);
+    }
+    Ok(handles)
+}
+
 async fn create_clients(
     yamls: &Vec<ModelConfig>,
 ) -> Result<HashMap<String, Mutex<ProxyServiceClient<Channel>>>, Box<dyn Error>> {
@@ -74,6 +83,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
         PathBuf::from(env::var("MODEL_YAML").expect("MODEL_YAML variable is not set."));
 
     let yamls = load_config(config_path)?;
+    let _servers = start_servers(&yamls)?;
     let clients = create_clients(&yamls).await?;
     let state = web::Data::new(AppState { clients });
 
