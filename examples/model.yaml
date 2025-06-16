@@ -1,0 +1,7 @@
+- name: "model-1"
+  path: "examples/model-1"
+  port: 50051
+
+- name: "model-2"
+  path: "examples/model-2"
+  port: 50052
