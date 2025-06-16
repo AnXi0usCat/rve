@@ -1,0 +1,3 @@
+- name: "model1"
+  path: "example"
+  port: 50051
