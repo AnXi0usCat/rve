@@ -2,7 +2,7 @@ use std::{
     error::Error,
     fs,
     path::PathBuf,
-    process::{Child, Command, Stdio},
+    process::{Child, Command, Stdio}, thread, time::Duration,
 };
 
 use serde::Deserialize;
@@ -36,20 +36,26 @@ pub fn load_config(config_path: PathBuf) -> Result<Vec<ModelConfig>, Box<dyn Err
 }
 
 pub fn start_model_process(model_config: &ModelConfig) -> Result<ModelProcess, Box<dyn Error>> {
-    let activate_script = model_config.path.join("venv/bin/activate");
-    let start_command = format!(
-        "source {} && python3 grpc_server --port {}",
-        activate_script.display(),
-        model_config.port
-    );
+    let python_path = model_config.path.join("venv/bin/python");
+    if !python_path.exists() {
+        return Err(format!("Python not found at {:?}", python_path).into());
+    }
 
-    let process = Command::new("sh")
-        .arg("-c")
-        .arg(&start_command)
-        .current_dir(model_config.path.clone())
+    let script_path = model_config.path.join("grpc_server.py");
+
+    println!("Spawning: {:?} {:?}", python_path, script_path);
+
+    let process = Command::new(python_path)
+        .arg(script_path)
+        .arg("--port")
+        .arg(model_config.port.to_string())
+        //.current_dir(&model_config.path)
         .stdout(Stdio::inherit())
         .stderr(Stdio::inherit())
         .spawn()?;
+
+    println!("sleeping, so the process could start up");
+    thread::sleep(Duration::from_secs(2));
 
     Ok(ModelProcess {
         name: model_config.name.clone(),
