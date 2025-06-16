@@ -4,7 +4,7 @@ use std::{
     path::PathBuf,
     process::{Child, Command, Stdio}, thread, time::Duration,
 };
-
+use log;
 use serde::Deserialize;
 
 #[derive(Debug, Clone, Deserialize)]
@@ -42,19 +42,21 @@ pub fn start_model_process(model_config: &ModelConfig) -> Result<ModelProcess, B
     }
 
     let script_path = model_config.path.join("grpc_server.py");
+    if !script_path.exists() {
+        return Err(format!("Server entry point not found at {:?}", script_path).into());
+    }
 
-    println!("Spawning: {:?} {:?}", python_path, script_path);
+    log::info!("Spawning: {:?} {:?}", python_path, script_path);
 
     let process = Command::new(python_path)
         .arg(script_path)
         .arg("--port")
         .arg(model_config.port.to_string())
-        //.current_dir(&model_config.path)
         .stdout(Stdio::inherit())
         .stderr(Stdio::inherit())
         .spawn()?;
 
-    println!("sleeping, so the process could start up");
+    log::info!("sleeping, so the process could start up");
     thread::sleep(Duration::from_secs(2));
 
     Ok(ModelProcess {
