@@ -1351,6 +1351,7 @@ dependencies = [
 name = "proxy"
 version = "0.1.0"
 dependencies = [
+ "activate",
  "actix-web",
  "prost",
  "serde",
