@@ -57,7 +57,7 @@ pub fn start_model_process(model_config: &ModelConfig) -> Result<ModelProcess, B
         .spawn()?;
 
     log::info!("sleeping, so the process could start up");
-    thread::sleep(Duration::from_secs(2));
+    thread::sleep(Duration::from_secs(20));
 
     Ok(ModelProcess {
         name: model_config.name.clone(),
