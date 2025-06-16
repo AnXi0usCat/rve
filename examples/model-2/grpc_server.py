@@ -29,7 +29,7 @@ def serve():
     server = grpc.server(futures.ThreadPoolExecutor(max_workers=10))
     service_pb2_grpc.add_ProxyServiceServicer_to_server(ProxyService(), server)
     server.add_insecure_port(f"[::1]:{args.port}")
-    print("Starting gRPC server on port 50051...")
+    print(f"Starting gRPC server on port {args.port}...")
     server.start()
     server.wait_for_termination()
 
