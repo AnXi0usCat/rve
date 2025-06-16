@@ -1,4 +1,4 @@
-use std::{collections::HashMap, env, error::Error, path::PathBuf, sync::Mutex};
+use std::{collections::HashMap, env, error::Error, path::PathBuf};
 
 use actix_web::{App, HttpRequest, HttpResponse, HttpServer, error::ErrorBadRequest, web};
 use serde_json::Value;
@@ -8,7 +8,7 @@ pub mod service {
 }
 use activate::{ModelConfig, ModelProcess, load_config, start_model_process};
 use service::{PredictRequest, proxy_service_client::ProxyServiceClient};
-
+use tokio::sync::Mutex;
 struct AppState {
     clients: HashMap<String, Mutex<ProxyServiceClient<Channel>>>,
 }
@@ -23,7 +23,7 @@ async fn predict_handler(
         .ok_or_else(|| actix_web::error::ErrorInternalServerError("missing route name"))?;
 
     let payload = serde_json::to_string(&json.into_inner()).map_err(ErrorBadRequest)?;
-    let mut client = data.clients.get(resource_name).unwrap().lock().unwrap();
+    let mut client = data.clients.get(resource_name).unwrap().lock().await;
 
     // gRPC request
     let grpc_response = client
@@ -51,6 +51,7 @@ fn start_servers(configs: &Vec<ModelConfig>) -> Result<Vec<ModelProcess>, Box<dy
     let mut handles: Vec<ModelProcess> = Vec::new();
 
     for config in configs.iter() {
+        log::info!("Creating a gRPC server for {}", &config.name);
         handles.push(start_model_process(config)?);
     }
     Ok(handles)
@@ -65,20 +66,21 @@ async fn create_clients(
         let client = ProxyServiceClient::connect(format!("http://[::1]:{}", yaml.port))
             .await
             .expect("Could not connect to gRPC service");
+
+        let mut client_name = yaml.name.clone();
         if let Some(sub_route) = yaml.sub_route.clone() {
-            clients.insert(
-                format!("{}-{}", yaml.name.clone(), sub_route),
-                Mutex::new(client),
-            );
-        } else {
-            clients.insert(yaml.name.clone(), Mutex::new(client));
+               client_name = format!("{}-{}", yaml.name.clone(), sub_route);
         }
+        log::info!("Creating a gGRPC client: {}", &client_name);
+        clients.insert(client_name, Mutex::new(client));
     }
     Ok(clients)
 }
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> Result<(), Box<dyn Error>> {
+    env_logger::init();
+
     let config_path =
         PathBuf::from(env::var("MODEL_YAML").expect("MODEL_YAML variable is not set."));
 
@@ -92,11 +94,13 @@ async fn main() -> Result<(), Box<dyn Error>> {
         for yaml in yamls.iter() {
             let mut name = yaml.name.clone();
             let mut route = format!("{}/predict", name);
+
             if let Some(sub_route) = yaml.sub_route.clone() {
                 route = format!("{}-{}", route, sub_route);
                 name = format!("{}-{}", name, sub_route);
             }
-            println!("Creating new route {}, with the name {}", &route, &name);
+            log::info!("Creating new route {}, with the name {}", &route, &name);
+            
             app = app.service(
                 web::resource(route)
                     .name(&name)
