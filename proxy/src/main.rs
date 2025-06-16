@@ -6,7 +6,7 @@ use tonic::{Request, transport::Channel};
 pub mod service {
     tonic::include_proto!("proxy");
 }
-use activate::{load_config, start_model_process, ModelConfig, ModelProcess};
+use activate::{ModelConfig, ModelProcess, load_config, start_model_process};
 use service::{PredictRequest, proxy_service_client::ProxyServiceClient};
 
 struct AppState {
@@ -77,7 +77,7 @@ async fn create_clients(
     Ok(clients)
 }
 
-#[tokio::main]
+#[tokio::main(flavor = "current_thread")]
 async fn main() -> Result<(), Box<dyn Error>> {
     let config_path =
         PathBuf::from(env::var("MODEL_YAML").expect("MODEL_YAML variable is not set."));
@@ -96,15 +96,16 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 route = format!("{}-{}", route, sub_route);
                 name = format!("{}-{}", name, sub_route);
             }
+            println!("Creating new route {}, with the name {}", &route, &name);
             app = app.service(
                 web::resource(route)
                     .name(&name)
-                    .route(web::get().to(predict_handler)),
+                    .route(web::post().to(predict_handler)),
             );
         }
 
         app
-    })
+    }).workers(1)
     .bind("0.0.0.0:8000")?
     .run()
     .await?;
