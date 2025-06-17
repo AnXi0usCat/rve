@@ -25,7 +25,7 @@ pub struct ModelProcess {
 impl Drop for ModelProcess {
     fn drop(&mut self) {
         log::info!("terminating worker: {}", &self.name);
-        let _ = self.process.wait();
+        let _ = self.process.kill();
     }
 }
 
