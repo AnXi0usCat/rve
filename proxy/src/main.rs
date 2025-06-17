@@ -25,7 +25,6 @@ async fn predict_handler(
     let payload = serde_json::to_string(&json.into_inner()).map_err(ErrorBadRequest)?;
     let mut client = data.clients.get(resource_name).unwrap().lock().await;
 
-    // gRPC request
     let grpc_response = client
         .predict(Request::new(PredictRequest {
             json_request: payload,
@@ -36,7 +35,6 @@ async fn predict_handler(
 
     drop(client);
 
-    // Deserialize arbitrary response JSON
     let response_value: Value = serde_json::from_str(&grpc_response.json_response)
         .map_err(actix_web::error::ErrorInternalServerError)?;
 
