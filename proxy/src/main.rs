@@ -1,8 +1,8 @@
-use std::{collections::HashMap, env, error::Error, path::PathBuf};
+use std::{collections::HashMap, env, error::Error, path::PathBuf, time::Duration};
 
 use actix_web::{App, HttpRequest, HttpResponse, HttpServer, error::ErrorBadRequest, web};
 use serde_json::Value;
-use tonic::{Request, transport::Channel};
+use tonic::{transport::Channel, Request};
 pub mod service {
     tonic::include_proto!("proxy");
 }
@@ -63,7 +63,7 @@ async fn create_clients(
     let mut clients: HashMap<String, Mutex<ProxyServiceClient<Channel>>> = HashMap::new();
 
     for yaml in yamls.iter() {
-        let client = ProxyServiceClient::connect(format!("http://[::1]:{}", yaml.port))
+        let client = connect_with_retry(format!("http://[::1]:{}", yaml.port), 5u8)
             .await
             .expect("Could not connect to gRPC service");
 
@@ -75,6 +75,19 @@ async fn create_clients(
         clients.insert(client_name, Mutex::new(client));
     }
     Ok(clients)
+}
+
+async fn connect_with_retry(addr: String, retries: u8) -> Result<ProxyServiceClient<Channel>, Box::<dyn Error>> {
+    for attempt in 0..retries {
+        match ProxyServiceClient::connect(addr.clone()).await {
+            Ok(client) => return Ok(client),
+            Err(e) => {
+                log::warn!("Attempt {} failed: {}. Retrying...", attempt + 1, e);
+                tokio::time::sleep(Duration::from_secs(5)).await;
+            }
+        }
+    }
+    Err("Failed all connection retry attempts".into())
 }
 
 #[tokio::main(flavor = "current_thread")]
