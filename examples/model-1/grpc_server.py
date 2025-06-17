@@ -17,7 +17,6 @@ class ProxyService(service_pb2_grpc.ProxyServiceServicer):
         # Example logic: parse input JSON and respond with JSON
         input_data = json.loads(request.json_request)
         output_data = {
-            "received": input_data,
             "message": f"Installed pandas version == {pd.__version__}"
         }
 
