@@ -2,7 +2,7 @@ use std::{
     error::Error,
     fs,
     path::PathBuf,
-    process::{Child, Command, Stdio}, thread, time::Duration,
+    process::{Child, Command, Stdio}
 };
 use log;
 use serde::Deserialize;
@@ -24,7 +24,8 @@ pub struct ModelProcess {
 
 impl Drop for ModelProcess {
     fn drop(&mut self) {
-        let _ = self.process.kill();
+        log::info!("terminating worker: {}", &self.name);
+        let _ = self.process.wait();
     }
 }
 
