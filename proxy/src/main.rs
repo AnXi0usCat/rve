@@ -8,9 +8,9 @@ pub mod service {
 }
 use activate::{ModelConfig, ModelProcess, load_config, start_model_process};
 use service::{PredictRequest, proxy_service_client::ProxyServiceClient};
-use tokio::sync::Mutex;
+
 struct AppState {
-    clients: HashMap<String, Mutex<ProxyServiceClient<Channel>>>,
+    clients: HashMap<String, ProxyServiceClient<Channel>>,
 }
 
 async fn predict_handler(
@@ -21,10 +21,8 @@ async fn predict_handler(
     let resource_name = req
         .match_name()
         .ok_or_else(|| actix_web::error::ErrorInternalServerError("missing route name"))?;
-
     let payload = serde_json::to_string(&json.into_inner()).map_err(ErrorBadRequest)?;
-    let mut client = data.clients.get(resource_name).unwrap().lock().await;
-
+    let mut client = data.clients.get(resource_name).unwrap().clone();
     let grpc_response = client
         .predict(Request::new(PredictRequest {
             json_request: payload,
@@ -57,8 +55,8 @@ fn start_servers(configs: &Vec<ModelConfig>) -> Result<Vec<ModelProcess>, Box<dy
 
 async fn create_clients(
     yamls: &Vec<ModelConfig>,
-) -> Result<HashMap<String, Mutex<ProxyServiceClient<Channel>>>, Box<dyn Error>> {
-    let mut clients: HashMap<String, Mutex<ProxyServiceClient<Channel>>> = HashMap::new();
+) -> Result<HashMap<String, ProxyServiceClient<Channel>>, Box<dyn Error>> {
+    let mut clients: HashMap<String, ProxyServiceClient<Channel>> = HashMap::new();
 
     for yaml in yamls.iter() {
         let client = connect_with_retry(format!("http://[::1]:{}", yaml.port), 5u8)
@@ -70,7 +68,7 @@ async fn create_clients(
                client_name = format!("{}-{}", yaml.name.clone(), sub_route);
         }
         log::info!("Creating a gGRPC client: {}", &client_name);
-        clients.insert(client_name, Mutex::new(client));
+        clients.insert(client_name, client);
     }
     Ok(clients)
 }
